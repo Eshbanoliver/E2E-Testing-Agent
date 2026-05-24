@@ -180,7 +180,7 @@ export default function Recorder({ backendUrl, socket, onNavigateToEditor }: Rec
             borderRadius: '6px',
             background: 'rgba(244, 63, 94, 0.1)',
             border: '1px solid var(--error)',
-            color: var(--error),
+            color: 'var(--error)',
             fontSize: '13px'
           }}>
             {error}
