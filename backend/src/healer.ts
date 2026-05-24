@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { chromium, Page, expect } from 'playwright';
+import { chromium, Page } from 'playwright';
+import { expect } from '@playwright/test';
 import { runPlaywrightTest, TestRunResult, readTestSpec, writeTestSpec } from './runner.js';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';

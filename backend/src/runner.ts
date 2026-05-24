@@ -50,14 +50,6 @@ export async function runPlaywrightTest(
     const child = exec(cmd, { cwd: BACKEND_DIR }, (error, stdout, stderr) => {
       const output = stdout + '\n' + stderr;
       console.log('Test run stdout/stderr captured.');
-      
-      // ... (rest of compilation check)
-    });
-
-    if (onLog) {
-      child.stdout?.on('data', (data) => onLog(data.toString()));
-      child.stderr?.on('data', (data) => onLog(data.toString()));
-    }
 
       // Check if the JSON report was written
       if (!fs.existsSync(resultsJsonPath)) {
@@ -95,7 +87,6 @@ export async function runPlaywrightTest(
                       const firstErr = result.errors[0];
                       
                       // Try to parse out the locator / selector from error message
-                      // e.g. waiting for locator('button')
                       let selector: string | undefined = undefined;
                       const selectorMatch = firstErr.message.match(/waiting for locator\('([^']+)'\)/) 
                          || firstErr.message.match(/locator\('([^']+)'\)/);
@@ -117,7 +108,6 @@ export async function runPlaywrightTest(
                   if (result.attachments) {
                     for (const att of result.attachments) {
                       if (att.name === 'screenshot') {
-                        // Keep path relative to workspace or copy to backend-served static path
                         screenshotPath = att.path;
                       } else if (att.name === 'trace') {
                         tracePath = att.path;
@@ -156,6 +146,11 @@ export async function runPlaywrightTest(
         });
       }
     });
+
+    if (onLog) {
+      child.stdout?.on('data', (data) => onLog(data.toString()));
+      child.stderr?.on('data', (data) => onLog(data.toString()));
+    }
   });
 }
 
