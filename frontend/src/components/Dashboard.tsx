@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, ShieldAlert, Cpu, Terminal, Plus, Layers, ShieldCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Cpu, Terminal, Plus, Layers, ShieldCheck } from 'lucide-react';
 
 interface DashboardProps {
   backendUrl: string;

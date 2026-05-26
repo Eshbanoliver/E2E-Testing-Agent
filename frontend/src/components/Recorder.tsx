@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Socket } from 'socket.io-client';
-import { Play, Square, Globe, Activity, CheckCircle, Navigation, MousePointer, Edit3, HelpCircle } from 'lucide-react';
-import { RecordedEvent, RecordingStatus } from '../types.js';
+import { Play, Square, Globe, Activity, CheckCircle, Navigation, MousePointer, Edit3 } from 'lucide-react';
+import type { RecordedEvent, RecordingStatus } from '../types.js';
 
 interface RecorderProps {
   backendUrl: string;
@@ -200,7 +200,7 @@ export default function Recorder({ backendUrl, socket, onNavigateToEditor }: Rec
                 Waiting for actions inside the launched browser...
               </div>
             ) : (
-              events.map((ev, index) => (
+              events.map((ev) => (
                 <div key={ev.id} className="terminal-line" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text-muted)' }}>[{new Date(ev.timestamp).toLocaleTimeString()}]</span>
                   

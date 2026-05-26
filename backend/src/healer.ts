@@ -6,6 +6,7 @@ import { expect } from '@playwright/test';
 import { runPlaywrightTest, TestRunResult, readTestSpec, writeTestSpec } from './runner.js';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
+import ts from 'typescript';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,11 +28,55 @@ export interface HealingResult {
 }
 
 /**
- * Extracts individual executable commands from the body of a Playwright test spec.
+ * Extracts individual executable commands from the body of a Playwright test spec using the TypeScript Compiler API.
  */
 function parseTestCommands(fileContent: string): { commands: string[]; testHeader: string; testFooter: string } {
-  // Regex to match the body of test('...', async ({ page }) => { BODY })
-  const testRegex = /(test\s*\(\s*['"][^'"]+['"]\s*,\s*async\s*\(\{\s*page\s*\}\)\s*=>\s*\{)([\s\S]*?)(\}\s*\);?\s*$)/;
+  try {
+    const sourceFile = ts.createSourceFile('temp.ts', fileContent, ts.ScriptTarget.ES2022, true);
+    let testBodyNode: ts.Block | null = null;
+    let testHeader = '';
+    let testFooter = '';
+
+    function findTestBlock(node: ts.Node) {
+      if (ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === 'test') {
+        const arg = node.arguments[1];
+        if (arg && (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg))) {
+          if (ts.isBlock(arg.body)) {
+            testBodyNode = arg.body;
+            const start = node.getStart(sourceFile);
+            const bodyStart = arg.body.getStart(sourceFile);
+            const bodyEnd = arg.body.getEnd();
+            const end = node.getEnd();
+            
+            testHeader = fileContent.substring(start, bodyStart + 1); // includes opening brace '{'
+            testFooter = fileContent.substring(bodyEnd - 1, end); // includes closing brace '}'
+          }
+        }
+      }
+      ts.forEachChild(node, findTestBlock);
+    }
+
+    findTestBlock(sourceFile);
+
+    if (testBodyNode) {
+      const commands: string[] = [];
+      for (const stmt of (testBodyNode as ts.Block).statements) {
+        const text = stmt.getText(sourceFile).trim();
+        // Keep active executable statement lines, declarations, and commands. Skip comments.
+        if (text && !text.startsWith('//') && !text.startsWith('/*')) {
+          commands.push(text);
+        }
+      }
+      return { commands, testHeader, testFooter };
+    }
+  } catch (tsError) {
+    console.warn('TypeScript AST parsing failed, falling back to regex parsing.', tsError);
+  }
+
+  // Fallback regex matching in case TS parsing fails
+  const testRegex = /(test\s*\(\s*[`'"][^`'"]+[`'"]\s*,\s*async\s*\(\{\s*page\s*\}\)\s*=>\s*\{)([\s\S]*?)(\}\s*\);?\s*$)/;
   const match = fileContent.match(testRegex);
   
   if (!match) {
@@ -42,33 +87,37 @@ function parseTestCommands(fileContent: string): { commands: string[]; testHeade
   const body = match[2];
   const testFooter = match[3];
 
-  // Split body by lines, clean up and keep only lines starting with await page or await expect
   const commands = body.split('\n')
     .map(line => line.trim())
-    .filter(line => {
-      return line.startsWith('await page.') || line.startsWith('await expect(');
-    });
+    .filter(line => line.length > 0 && !line.startsWith('//') && !line.startsWith('/*'));
 
   return { commands, testHeader, testFooter };
 }
 
 /**
- * Executes commands sequentially up to the failedCommandIndex using eval.
+ * Executes commands sequentially up to the failedCommandIndex using a unified eval block to preserve lexical scopes.
  */
 async function executeStepsUpTo(page: Page, commands: string[], stopBeforeIndex: number): Promise<void> {
   console.log(`Replaying ${stopBeforeIndex} setup steps in browser...`);
-  
-  for (let i = 0; i < stopBeforeIndex; i++) {
-    const command = commands[i];
-    console.log(`Replaying: ${command}`);
-    
-    // Evaluate in context. Eval has lexical access to 'page' and 'expect' parameters.
+  if (stopBeforeIndex <= 0) return;
+
+  const stepsToRun = commands.slice(0, stopBeforeIndex).join('\n');
+  const codeToExecute = `(async () => {
     try {
-      await eval(command);
-    } catch (err) {
-      console.error(`Setup command failed during replay at step ${i}: ${command}`);
-      throw new Error(`Replay setup failed at step [${command}]: ${(err as Error).message}`);
+      ${stepsToRun}
+    } catch (e) {
+      throw new Error("Step evaluation error: " + e.message);
     }
+  })()`;
+
+  console.log(`Replaying unified code block:\n${codeToExecute}`);
+  
+  try {
+    // Eval has lexical access to 'page' and 'expect' parameters in this scope.
+    await eval(codeToExecute);
+  } catch (err) {
+    console.error(`Replay setup failed:`, err);
+    throw new Error(`Replay setup failed at setup steps: ${(err as Error).message}`);
   }
 }
 

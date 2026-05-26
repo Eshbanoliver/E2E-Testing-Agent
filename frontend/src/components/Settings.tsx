@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, ShieldAlert, Sparkles, Key, Cpu } from 'lucide-react';
-import { AppSettings } from '../types.js';
+import type { AppSettings } from '../types.js';
 
 interface SettingsProps {
   backendUrl: string;

@@ -74,10 +74,32 @@ export async function runPlaywrightTest(
         let screenshotPath: string | undefined = undefined;
         let tracePath: string | undefined = undefined;
 
+        // Helper to extract specs recursively from nested suites
+        const extractSpecsRecursive = (suite: any): any[] => {
+          let specs = [...(suite.specs || [])];
+          if (suite.suites) {
+            for (const subSuite of suite.suites) {
+              specs.push(...extractSpecsRecursive(subSuite));
+            }
+          }
+          return specs;
+        };
+
         // Traverse JSON structure to extract errors and attachments
         if (report.suites && report.suites.length > 0) {
+          const allSpecs: any[] = [];
           for (const suite of report.suites) {
-            for (const spec of suite.specs) {
+            allSpecs.push(...extractSpecsRecursive(suite));
+          }
+          
+          if (allSpecs.length === 0) {
+            success = false;
+            testError = {
+              message: 'No tests found in suite.',
+              stack: output
+            };
+          } else {
+            for (const spec of allSpecs) {
               for (const testItem of spec.tests) {
                 for (const result of testItem.results) {
                   if (result.status !== 'passed') {

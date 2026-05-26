@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import { Play, Sparkles, AlertTriangle, CheckCircle, Terminal, HelpCircle, RefreshCw, FileImage, FileCode2 } from 'lucide-react';
-import { TestRunResult, HealingResult } from '../types.js';
+import type { TestRunResult, HealingResult } from '../types.js';
 
 interface TestRunnerProps {
   backendUrl: string;

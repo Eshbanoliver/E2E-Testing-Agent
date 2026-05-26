@@ -39,6 +39,10 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
 
   // Send event helper
   async function sendEvent(eventData) {
+    // If the overlay was removed, stop recording events (unless it's the initial navigation)
+    if (eventData.type !== 'navigate' && !document.getElementById('e2e-recorder-overlay')) {
+      return;
+    }
     try {
       await fetch(SERVER_URL + '/api/record-event', {
         method: 'POST',
@@ -110,6 +114,7 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
 
   // Create UI overlay
   function createOverlay() {
+    if (window !== window.top) return; // Guard to only create UI in the main frame!
     const container = document.createElement('div');
     container.id = 'e2e-recorder-overlay';
     container.style.cssText = \`
@@ -333,7 +338,8 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
   // Hover effect during assertion mode
   document.addEventListener('mouseover', (e) => {
     if (!isAssertionMode) return;
-    const el = e.target;
+    const path = e.composedPath ? e.composedPath() : [];
+    const el = path.length > 0 ? path[0] : e.target;
     // Don't highlight overlay UI
     if (el.closest('#e2e-recorder-overlay')) return;
 
@@ -348,7 +354,8 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
 
   document.addEventListener('mouseout', (e) => {
     if (!isAssertionMode) return;
-    const el = e.target;
+    const path = e.composedPath ? e.composedPath() : [];
+    const el = path.length > 0 ? path[0] : e.target;
     if (el === lastHoveredElement) {
       el.style.border = originalBorder;
       lastHoveredElement = null;
@@ -357,7 +364,8 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
 
   // Click interceptor (captures clicks and assertions)
   document.addEventListener('click', (e) => {
-    const el = e.target;
+    const path = e.composedPath ? e.composedPath() : [];
+    const el = path.length > 0 ? path[0] : e.target;
     if (el.closest('#e2e-recorder-overlay')) return;
 
     const selector = getElementSelector(el);
@@ -403,8 +411,14 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
 
   // Input changes interceptor
   document.addEventListener('change', (e) => {
-    const el = e.target;
+    const path = e.composedPath ? e.composedPath() : [];
+    const el = path.length > 0 ? path[0] : e.target;
     if (el.closest('#e2e-recorder-overlay')) return;
+
+    // Ignore checkboxes and radio buttons to prevent duplicate click/fill events
+    if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+      return;
+    }
 
     const selector = getElementSelector(el);
     const acc = getAccessibilityInfo(el);
@@ -442,6 +456,41 @@ const RECORDER_INJECT_SCRIPT = (serverUrl: string) => `
       });
     });
   }
+
+  // SPA routing interceptor
+  let lastUrl = window.location.href;
+  function checkUrlChange() {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      sendEvent({
+        id: Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        type: 'navigate',
+        url: lastUrl
+      });
+    }
+  }
+
+  window.addEventListener('popstate', checkUrlChange);
+  window.addEventListener('hashchange', checkUrlChange);
+
+  // Monkey-patch pushState and replaceState
+  const originalPushState = window.history.pushState;
+  if (originalPushState) {
+    window.history.pushState = function(...args) {
+      const res = originalPushState.apply(this, args);
+      checkUrlChange();
+      return res;
+    };
+  }
+  const originalReplaceState = window.history.replaceState;
+  if (originalReplaceState) {
+    window.history.replaceState = function(...args) {
+      const res = originalReplaceState.apply(this, args);
+      checkUrlChange();
+      return res;
+    };
+  }
 })();
 `;
 
@@ -469,9 +518,9 @@ export async function startRecording(url: string, serverPort: number): Promise<v
 
     activePage = await activeContext.newPage();
 
-    // Inject recorder script on every frame / navigation
+    // Inject recorder script on every frame / navigation across ALL pages/tabs in context
     const serverUrl = `http://localhost:${serverPort}`;
-    await activePage.addInitScript(RECORDER_INJECT_SCRIPT(serverUrl));
+    await activeContext.addInitScript(RECORDER_INJECT_SCRIPT(serverUrl));
 
     // Navigate to target
     await activePage.goto(url);
